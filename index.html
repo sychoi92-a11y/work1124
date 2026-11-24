@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>입체도형 놀이터</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; font-family: "Pretendard", "Malgun Gothic", system-ui, sans-serif;
+    background: #fff8ec; color: #3a2e2a;
+    display: flex; flex-direction: column; align-items: center; min-height: 100vh;
+  }
+  header { text-align: center; padding: 20px 16px 4px; }
+  h1 { margin: 0; font-size: 1.8rem; }
+  header p { margin: 6px 0 0; color: #7a6a60; }
+  .tabs { display: flex; gap: 8px; margin: 14px 0; }
+  .tab {
+    border: 2px solid #3a2e2a; background: #fff; border-radius: 999px;
+    padding: 8px 18px; font-size: 1rem; font-weight: 700; cursor: pointer;
+  }
+  .tab.active { background: #3a2e2a; color: #fff; }
+  main { width: min(960px, 100%); padding: 0 16px 32px; }
+  .shapes { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-bottom: 12px; }
+  .shape-btn {
+    border: none; border-radius: 12px; padding: 10px 14px; font-size: .95rem;
+    background: #ffe2b8; cursor: pointer; font-weight: 600;
+  }
+  .shape-btn.active { background: #ff9f43; color: #fff; }
+  .stage {
+    display: grid; grid-template-columns: 1fr 260px; gap: 16px; align-items: start;
+  }
+  @media (max-width: 720px) { .stage { grid-template-columns: 1fr; } }
+  .canvas-wrap {
+    background: #fff; border-radius: 20px; box-shadow: 0 4px 0 #e8d8c0;
+    position: relative; aspect-ratio: 1 / 1; touch-action: none;
+  }
+  canvas { width: 100%; height: 100%; display: block; cursor: grab; }
+  canvas:active { cursor: grabbing; }
+  .hint { position: absolute; bottom: 10px; width: 100%; text-align: center; font-size: .85rem; color: #a89888; pointer-events: none; }
+  .panel { background: #fff; border-radius: 20px; padding: 18px; box-shadow: 0 4px 0 #e8d8c0; }
+  .panel h2 { margin: 0 0 12px; font-size: 1.4rem; }
+  .stat { display: flex; justify-content: space-between; align-items: center; padding: 10px 12px; border-radius: 12px; margin-bottom: 8px; font-size: 1.05rem; }
+  .stat b { font-size: 1.5rem; }
+  .s-face { background: #ffe9e3; } .s-edge { background: #e3f1ff; } .s-vert { background: #e6f8e6; }
+  .toggles label { display: flex; gap: 8px; align-items: center; margin: 8px 0; cursor: pointer; }
+  .tip { margin-top: 12px; font-size: .9rem; color: #7a6a60; line-height: 1.5; }
+  .quiz-q { font-size: 1.2rem; font-weight: 700; margin-bottom: 12px; }
+  .choices { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .choice { border: 2px solid #3a2e2a; background: #fff; border-radius: 12px; padding: 12px; font-size: 1.2rem; font-weight: 700; cursor: pointer; }
+  .choice.correct { background: #6bcb77; color: #fff; border-color: #6bcb77; }
+  .choice.wrong { background: #ff6b6b; color: #fff; border-color: #ff6b6b; }
+  .feedback { min-height: 1.6em; margin-top: 10px; font-weight: 700; }
+  .score { margin-top: 6px; color: #7a6a60; }
+  .next { margin-top: 10px; width: 100%; border: none; background: #ff9f43; color: #fff; padding: 12px; border-radius: 12px; font-size: 1rem; font-weight: 700; cursor: pointer; }
+  .hidden { display: none; }
+</style>
+</head>
+<body>
+<header>
+  <h1>🔺 입체도형 놀이터 🟦</h1>
+  <p>도형을 손가락으로 돌려 보고, 면·모서리·꼭짓점을 세어 봐요!</p>
+</header>
+
+<div class="tabs">
+  <button class="tab active" data-mode="explore">탐험하기</button>
+  <button class="tab" data-mode="quiz">퀴즈</button>
+</div>
+
+<main>
+  <div class="shapes" id="shapes"></div>
+  <div class="stage">
+    <div class="canvas-wrap">
+      <canvas id="cv" width="800" height="800"></canvas>
+      <div class="hint">드래그해서 돌려 보세요</div>
+    </div>
+
+    <div class="panel" id="explorePanel">
+      <h2 id="shapeName"></h2>
+      <div class="stat s-face"><span>면</span><b id="nF"></b></div>
+      <div class="stat s-edge"><span>모서리</span><b id="nE"></b></div>
+      <div class="stat s-vert"><span>꼭짓점</span><b id="nV"></b></div>
+      <div class="toggles">
+        <label><input type="checkbox" id="tVert" checked> 꼭짓점 표시</label>
+        <label><input type="checkbox" id="tSpin" checked> 자동 회전</label>
+      </div>
+      <div class="tip" id="tip"></div>
+    </div>
+
+    <div class="panel hidden" id="quizPanel">
+      <h2>도형 퀴즈</h2>
+      <div class="quiz-q" id="qText"></div>
+      <div class="choices" id="choices"></div>
+      <div class="feedback" id="feedback"></div>
+      <div class="score" id="score"></div>
+      <button class="next" id="nextBtn">다음 문제 ▶</button>
+    </div>
+  </div>
+</main>
+
+<script>
+// ---------- 도형 정의 ----------
+function prism(n, h = 1.2, r = 1) {
+  const V = [], F = [];
+  for (let i = 0; i < n; i++) {
+    const a = (i / n) * Math.PI * 2 - Math.PI / 2 + (n === 4 ? Math.PI / 4 : 0);
+    V.push([r * Math.cos(a), -h / 2, r * Math.sin(a)]);
+  }
+  for (let i = 0; i < n; i++) V.push([V[i][0], h / 2, V[i][2]]);
+  F.push([...Array(n).keys()].reverse());
+  F.push([...Array(n).keys()].map(i => i + n));
+  for (let i = 0; i < n; i++) { const j = (i + 1) % n; F.push([i, j, j + n, i + n]); }
+  return { V, F };
+}
+function pyramid(n, h = 1.5, r = 1.1) {
+  const V = [], F = [];
+  for (let i = 0; i < n; i++) {
+    const a = (i / n) * Math.PI * 2 - Math.PI / 2 + (n === 4 ? Math.PI / 4 : 0);
+    V.push([r * Math.cos(a), -h / 2, r * Math.sin(a)]);
+  }
+  V.push([0, h / 2, 0]);
+  F.push([...Array(n).keys()].reverse());
+  for (let i = 0; i < n; i++) F.push([i, (i + 1) % n, n].reverse());
+  return { V, F };
+}
+function cuboid() {
+  const s = prism(4, 1.0, 1.25);
+  s.V = s.V.map(([x, y, z]) => [x * 1.3, y, z * 0.7]);
+  return s;
+}
+function octahedron() {
+  const V = [[1.2,0,0],[-1.2,0,0],[0,1.2,0],[0,-1.2,0],[0,0,1.2],[0,0,-1.2]];
+  const F = [[0,2,4],[4,2,1],[1,2,5],[5,2,0],[4,3,0],[1,3,4],[5,3,1],[0,3,5]];
+  return { V, F };
+}
+
+const SHAPES = [
+  { name: "정육면체", ...prism(4, 1.41, 1), tip: "주사위 모양! 모든 면이 똑같은 정사각형이에요." },
+  { name: "직육면체", ...cuboid(), tip: "상자 모양! 마주 보는 면끼리 크기가 같아요." },
+  { name: "삼각기둥", ...prism(3), tip: "위아래가 삼각형, 옆면은 직사각형이에요." },
+  { name: "오각기둥", ...prism(5), tip: "위아래가 오각형! 옆면이 5개예요." },
+  { name: "육각기둥", ...prism(6), tip: "벌집 모양 기둥! 옆면이 6개예요." },
+  { name: "삼각뿔", ...pyramid(3), tip: "모든 면이 삼각형! 가장 면이 적은 입체도형이에요." },
+  { name: "사각뿔", ...pyramid(4), tip: "피라미드 모양! 바닥은 사각형, 옆면은 삼각형이에요." },
+  { name: "정팔면체", ...octahedron(), tip: "사각뿔 두 개를 바닥끼리 붙인 모양이에요." },
+];
+SHAPES.forEach(s => {
+  const edges = new Set();
+  s.F.forEach(f => f.forEach((a, i) => {
+    const b = f[(i + 1) % f.length];
+    edges.add(a < b ? a + "-" + b : b + "-" + a);
+  }));
+  s.E = [...edges].map(k => k.split("-").map(Number));
+});
+
+const COLORS = ["#ff6b6b","#ffa94d","#ffd43b","#69db7c","#4dabf7","#9775fa","#f783ac","#38d9a9"];
+
+// ---------- 상태 ----------
+let current = 0, rotX = 0.45, rotY = 0.6, mode = "explore";
+let dragging = false, lastX = 0, lastY = 0;
+const cv = document.getElementById("cv"), ctx = cv.getContext("2d");
+const $ = id => document.getElementById(id);
+
+// ---------- 렌더링 ----------
+function rotate([x, y, z]) {
+  let cy = Math.cos(rotY), sy = Math.sin(rotY);
+  [x, z] = [x * cy + z * sy, -x * sy + z * cy];
+  let cx = Math.cos(rotX), sx = Math.sin(rotX);
+  [y, z] = [y * cx - z * sx, y * sx + z * cx];
+  return [x, y, z];
+}
+function project([x, y, z]) {
+  const d = 6, s = 230 * d / (d - z);
+  return [400 + x * s, 400 - y * s];
+}
+function shade(hex, k) {
+  const n = parseInt(hex.slice(1), 16);
+  const r = Math.min(255, (n >> 16) * k), g = Math.min(255, ((n >> 8) & 255) * k), b = Math.min(255, (n & 255) * k);
+  return `rgb(${r|0},${g|0},${b|0})`;
+}
+function draw() {
+  const s = SHAPES[current];
+  const R = s.V.map(rotate), P = R.map(project);
+  ctx.clearRect(0, 0, 800, 800);
+
+  const faces = s.F.map((f, i) => {
+    const [a, b, c] = f.map(k => R[k]);
+    const u = [b[0]-a[0], b[1]-a[1], b[2]-a[2]], v = [c[0]-a[0], c[1]-a[1], c[2]-a[2]];
+    let n = [u[1]*v[2]-u[2]*v[1], u[2]*v[0]-u[0]*v[2], u[0]*v[1]-u[1]*v[0]];
+    // 볼록 도형이므로 법선이 항상 바깥(중심 반대쪽)을 향하도록 맞춤
+    const cen = [0, 1, 2].map(ax => f.reduce((t, k) => t + R[k][ax], 0) / f.length);
+    if (n[0]*cen[0] + n[1]*cen[1] + n[2]*cen[2] < 0) n = n.map(x => -x);
+    const len = Math.hypot(...n) || 1;
+    const depth = f.reduce((t, k) => t + R[k][2], 0) / f.length;
+    return { f, i, nz: n[2] / len, light: (n[0]*-0.3 + n[1]*0.6 + n[2]*0.75) / len, depth };
+  }).sort((a, b) => a.depth - b.depth);
+
+  // 숨은 모서리(점선)
+  ctx.setLineDash([10, 10]); ctx.strokeStyle = "rgba(58,46,42,.25)"; ctx.lineWidth = 3;
+  s.E.forEach(([a, b]) => { ctx.beginPath(); ctx.moveTo(...P[a]); ctx.lineTo(...P[b]); ctx.stroke(); });
+  ctx.setLineDash([]);
+
+  faces.forEach(({ f, i, nz, light }) => {
+    if (nz <= 0) return;
+    ctx.beginPath();
+    f.forEach((k, j) => j ? ctx.lineTo(...P[k]) : ctx.moveTo(...P[k]));
+    ctx.closePath();
+    ctx.fillStyle = shade(COLORS[i % COLORS.length], 0.65 + 0.45 * Math.max(0, light));
+    ctx.globalAlpha = 0.92; ctx.fill(); ctx.globalAlpha = 1;
+    ctx.strokeStyle = "#3a2e2a"; ctx.lineWidth = 5; ctx.lineJoin = "round"; ctx.stroke();
+  });
+
+  if ($("tVert").checked || mode === "quiz") {
+    const visible = new Set();
+    faces.forEach(({ f, nz }) => { if (nz > 0) f.forEach(k => visible.add(k)); });
+    P.forEach((p, k) => {
+      const on = visible.has(k);
+      ctx.beginPath(); ctx.arc(p[0], p[1], on ? 12 : 8, 0, Math.PI * 2);
+      ctx.globalAlpha = on ? 1 : 0.35;
+      ctx.fillStyle = "#fff"; ctx.fill(); ctx.lineWidth = on ? 5 : 3; ctx.strokeStyle = "#3a2e2a"; ctx.stroke();
+      ctx.globalAlpha = 1;
+    });
+  }
+}
+function loop() {
+  if (!dragging && ($("tSpin").checked || mode === "quiz")) rotY += 0.006;
+  draw(); requestAnimationFrame(loop);
+}
+
+// ---------- 드래그 ----------
+cv.addEventListener("pointerdown", e => { dragging = true; lastX = e.clientX; lastY = e.clientY; cv.setPointerCapture(e.pointerId); });
+cv.addEventListener("pointermove", e => {
+  if (!dragging) return;
+  rotY += (e.clientX - lastX) * 0.01; rotX += (e.clientY - lastY) * 0.01;
+  rotX = Math.max(-1.5, Math.min(1.5, rotX));
+  lastX = e.clientX; lastY = e.clientY;
+});
+cv.addEventListener("pointerup", () => dragging = false);
+cv.addEventListener("pointercancel", () => dragging = false);
+
+// ---------- 탐험 모드 ----------
+const shapesBox = $("shapes");
+SHAPES.forEach((s, i) => {
+  const b = document.createElement("button");
+  b.className = "shape-btn"; b.textContent = s.name;
+  b.onclick = () => select(i);
+  shapesBox.appendChild(b);
+});
+function select(i) {
+  current = i;
+  [...shapesBox.children].forEach((b, j) => b.classList.toggle("active", j === i));
+  const s = SHAPES[i];
+  $("shapeName").textContent = s.name;
+  $("nF").textContent = s.F.length; $("nE").textContent = s.E.length; $("nV").textContent = s.V.length;
+  $("tip").innerHTML = `${s.tip}<br><br>💡 꼭짓점 + 면 − 모서리 = ${s.V.length} + ${s.F.length} − ${s.E.length} = <b>2</b>`;
+}
+
+// ---------- 퀴즈 모드 ----------
+let score = 0, total = 0, answered = false;
+const KIND = [["면", s => s.F.length], ["모서리", s => s.E.length], ["꼭짓점", s => s.V.length]];
+function newQuestion() {
+  answered = false;
+  const idx = Math.floor(Math.random() * SHAPES.length);
+  current = idx;
+  const s = SHAPES[idx];
+  const [label, fn] = KIND[Math.floor(Math.random() * 3)];
+  const ans = fn(s);
+  $("qText").textContent = `${s.name}의 ${label}은(는) 몇 개일까요?`;
+  const opts = new Set([ans]);
+  while (opts.size < 4) { const v = ans + Math.floor(Math.random() * 7) - 3; if (v > 0) opts.add(v); }
+  const box = $("choices"); box.innerHTML = "";
+  [...opts].sort(() => Math.random() - 0.5).forEach(v => {
+    const b = document.createElement("button");
+    b.className = "choice"; b.textContent = v;
+    b.onclick = () => {
+      if (answered) return; answered = true; total++;
+      if (v === ans) { score++; b.classList.add("correct"); $("feedback").textContent = "🎉 정답이에요!"; }
+      else {
+        b.classList.add("wrong");
+        [...box.children].find(c => +c.textContent === ans).classList.add("correct");
+        $("feedback").textContent = `아쉬워요! 정답은 ${ans}개예요.`;
+      }
+      $("score").textContent = `점수: ${score} / ${total}`;
+    };
+    box.appendChild(b);
+  });
+  $("feedback").textContent = "";
+  $("score").textContent = `점수: ${score} / ${total}`;
+}
+$("nextBtn").onclick = newQuestion;
+
+document.querySelectorAll(".tab").forEach(t => t.onclick = () => {
+  mode = t.dataset.mode;
+  document.querySelectorAll(".tab").forEach(x => x.classList.toggle("active", x === t));
+  $("explorePanel").classList.toggle("hidden", mode !== "explore");
+  $("quizPanel").classList.toggle("hidden", mode !== "quiz");
+  shapesBox.classList.toggle("hidden", mode !== "explore");
+  if (mode === "quiz") newQuestion(); else select(current);
+});
+
+select(0);
+loop();
+</script>
+</body>
+</html>
